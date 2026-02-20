@@ -2,78 +2,208 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Dog Breed AI</title>
+<title>Dog Breed AI Final Project</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-  body { font-family: Arial; text-align:center; background:#f7f7f7 }
-  h1 { color:#333 }
-  #card { background:white; width:320px; margin:auto; padding:15px; border-radius:12px; box-shadow:0 0 10px #aaa }
-  canvas { border-radius:12px; }
-  #breed { font-size:22px; font-weight:bold; margin-top:10px }
-  #desc { color:#444 }
+body{margin:0;font-family:Arial;background:#f1f5f9;}
+nav{
+  background:#4f46e5;
+  color:white;
+  padding:15px;
+  display:flex;
+  justify-content:space-around;
+}
+nav button{
+  background:none;
+  border:none;
+  color:white;
+  font-size:16px;
+  cursor:pointer;
+}
+.page{display:none;padding:20px;text-align:center;}
+.active{display:block;}
+.card{
+  background:white;
+  padding:20px;
+  border-radius:15px;
+  box-shadow:0 5px 15px rgba(0,0,0,0.1);
+  max-width:400px;
+  margin:auto;
+}
+button.main{
+  padding:10px 15px;
+  border:none;
+  border-radius:8px;
+  margin:5px;
+  cursor:pointer;
+  color:white;
+}
+.open{background:#4f46e5;}
+.capture{background:#16a34a;}
+.reset{background:#dc2626;}
+.download{background:#0ea5e9;}
+canvas,img{border-radius:12px;margin-top:10px;}
+.progress{background:#eee;border-radius:10px;height:10px;margin:5px 0;}
+.bar{height:10px;border-radius:10px;background:#4f46e5;}
 </style>
 </head>
-
 <body>
-<h1>🐶 Dog Breed AI</h1>
 
-<div id="card">
-  <button onclick="init()">📷 เปิดกล้อง</button>
-  <div id="webcam-container"></div>
+<nav>
+<button onclick="showPage('home')">Home</button>
+<button onclick="showPage('ai')">AI Detect</button>
+<button onclick="showPage('dashboard')">Dashboard</button>
+</nav>
 
-  <div id="breed"></div>
-  <div id="desc"></div>
+<!-- HOME -->
+<div id="home" class="page active">
+<h2>🐶 Dog Breed AI Project</h2>
+<p>ระบบจำแนกสายพันธุ์สุนัขด้วย Teachable Machine</p>
+<p>American Bulldog | Beagle | Labrador | Chihuahua | Siberian Husky</p>
+</div>
+
+<!-- AI PAGE -->
+<div id="ai" class="page">
+<div class="card">
+<button class="main open" onclick="init()">📷 เปิดกล้อง</button>
+<button class="main capture" onclick="capture()">📸 ถ่ายภาพ</button>
+<button class="main reset" onclick="resetStats()">🗑️ ล้างข้อมูล</button>
+
+<div id="webcam-container"></div>
+<img id="snapshot" width="250">
+
+<h3 id="breed"></h3>
+<p id="desc"></p>
+<div id="bars"></div>
+</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="page">
+<h2>📊 สถิติการตรวจจับ</h2>
+<canvas id="chart"></canvas>
+<br>
+<button class="main download" onclick="downloadCSV()">📁 ดาวน์โหลด CSV</button>
 </div>
 
 <script>
+
 const URL = "https://teachablemachine.withgoogle.com/models/FqRUS6uDf/";
 
 let model, webcam;
+let chart;
 
-const dogInfo = {
-  "Golden Retriever": "เป็นมิตร ฉลาด รักเด็ก",
-  "German Shepherd": "ซื่อสัตย์ ฉลาด ใช้ในงานตำรวจ",
-  "Poodle": "ฉลาด ขนหยิก ไม่ค่อยร่วง",
-  "Bulldog": "นิสัยสงบ แข็งแรง",
-  "Husky": "พลังเยอะ ชอบอากาศเย็น"
+const dogInfo={
+"American bulldog":"แข็งแรง ซื่อสัตย์ เหมาะเฝ้าบ้าน",
+"Beagle":"ร่าเริง ดมกลิ่นเก่ง",
+"Labrador":"เป็นมิตร ฉลาด",
+"Chihuahua":"ตัวเล็ก กล้าหาญ",
+"Siberian Husky":"พลังงานสูง ขนหนา"
 };
 
-async function init() {
-  const modelURL = URL + "model.json";
-  const metadataURL = URL + "metadata.json";
-
-  model = await tmImage.load(modelURL, metadataURL);
-
-  webcam = new tmImage.Webcam(250, 250, true);
-  await webcam.setup();
-  await webcam.play();
-  window.requestAnimationFrame(loop);
-
-  document.getElementById("webcam-container").appendChild(webcam.canvas);
+function showPage(id){
+document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+if(id==="dashboard") loadChart();
 }
 
-async function loop() {
-  webcam.update();
-  await predict();
-  window.requestAnimationFrame(loop);
+async function init(){
+const modelURL=URL+"model.json";
+const metadataURL=URL+"metadata.json";
+model=await tmImage.load(modelURL,metadataURL);
+webcam=new tmImage.Webcam(250,250,true);
+await webcam.setup();
+await webcam.play();
+document.getElementById("webcam-container").innerHTML="";
+document.getElementById("webcam-container").appendChild(webcam.canvas);
 }
 
-async function predict() {
-  const prediction = await model.predict(webcam.canvas);
-  prediction.sort((a,b)=>b.probability-a.probability);
+async function capture(){
+if(!model)return alert("เปิดกล้องก่อน");
+document.getElementById("snapshot").src=
+webcam.canvas.toDataURL("image/png");
 
-  const best = prediction[0].className;
-  const percent = (prediction[0].probability*100).toFixed(1);
+const prediction=await model.predict(webcam.canvas);
+prediction.sort((a,b)=>b.probability-a.probability);
 
-  document.getElementById("breed").innerText =
-    `พันธุ์: ${best} (${percent}%)`;
+const best=prediction[0].className;
+const percent=(prediction[0].probability*100).toFixed(1);
 
-  document.getElementById("desc").innerText =
-    dogInfo[best] || "ไม่มีข้อมูลลักษณะ";
+document.getElementById("breed").innerText=
+`พันธุ์: ${best} (${percent}%)`;
+document.getElementById("desc").innerText=
+dogInfo[best]||"ไม่มีข้อมูล";
+
+let bars="";
+prediction.forEach(p=>{
+let pr=(p.probability*100).toFixed(1);
+bars+=`
+<div>${p.className} ${pr}%</div>
+<div class="progress">
+<div class="bar" style="width:${pr}%"></div>
+</div>`;
+});
+document.getElementById("bars").innerHTML=bars;
+
+saveStats(best,parseFloat(percent));
 }
+
+function saveStats(breed,score){
+let data=JSON.parse(localStorage.getItem("dogStats"))||{};
+if(!data[breed])data[breed]={count:0,total:0};
+data[breed].count++;
+data[breed].total+=score;
+localStorage.setItem("dogStats",JSON.stringify(data));
+}
+
+function resetStats(){
+localStorage.removeItem("dogStats");
+alert("ล้างข้อมูลแล้ว");
+}
+
+function loadChart(){
+let data=JSON.parse(localStorage.getItem("dogStats"))||{};
+let labels=[];
+let counts=[];
+for(let b in data){
+labels.push(b);
+counts.push(data[b].count);
+}
+
+const ctx=document.getElementById('chart');
+if(chart)chart.destroy();
+
+chart=new Chart(ctx,{
+type:'bar',
+data:{
+labels:labels,
+datasets:[{
+label:'จำนวนครั้งที่ตรวจจับ',
+data:counts,
+backgroundColor:'#4f46e5'
+}]
+}
+});
+}
+
+function downloadCSV(){
+let data=JSON.parse(localStorage.getItem("dogStats"))||{};
+let csv="Breed,Count,Average Confidence\n";
+for(let b in data){
+let avg=(data[b].total/data[b].count).toFixed(1);
+csv+=`${b},${data[b].count},${avg}%\n`;
+}
+let blob=new Blob([csv],{type:"text/csv"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="dog_stats.csv";
+a.click();
+}
+
 </script>
 </body>
 </html>
